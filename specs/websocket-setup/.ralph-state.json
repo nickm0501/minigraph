@@ -1,0 +1,13 @@
+{
+  "source": "spec",
+  "name": "websocket-setup",
+  "basePath": "./specs/websocket-setup",
+  "phase": "execution",
+  "awaitingApproval": false,
+  "taskIndex": 0,
+  "totalTasks": 22,
+  "taskIteration": 1,
+  "maxTaskIterations": 1,
+  "globalIteration": 1,
+  "maxGlobalIterations": 100
+}
