@@ -74,7 +74,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let mut current_room: Option<DocumentId> = None;
 
-    // Spawn send task
+    // Loop in a thread and receive messages in an channel
+    // and send them back to the WS client.
     let mut send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             match serde_json::to_string(&msg) {
@@ -91,7 +92,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         }
     });
 
-    // Receive loop
+    // Loop in a thread and receive messages from the client
     let client_id_clone = client_id.clone();
     let state_clone = state.clone();
     let mut recv_task = tokio::spawn(async move {
