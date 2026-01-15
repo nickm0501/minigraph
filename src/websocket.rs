@@ -45,7 +45,10 @@ async fn handle_client_message(
         }
         ClientMessage::SendMessage { text } => {
             if let Some(ref room) = current_room {
-                println!("[WS] Client {} sending message to room '{}'", client_id, room);
+                println!(
+                    "[WS] Client {} sending message to room '{}'",
+                    client_id, room
+                );
 
                 let message = ServerMessage::new_message(client_id.to_string(), text);
                 state.broadcast_to_room(room, message).await;
