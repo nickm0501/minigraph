@@ -1,6 +1,7 @@
 use axum::{routing::get, Router};
 use tower_http::services::ServeDir;
 
+mod types;
 mod websocket;
 
 #[tokio::main]

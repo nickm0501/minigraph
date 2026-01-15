@@ -168,11 +168,11 @@ _Design: Section 4 (static/index.html)_
 - `src/types.rs` (create)
 
 **Done when:**
-- [ ] File compiles without errors
-- [ ] Both enums have `#[serde(tag = "type", rename_all = "snake_case")]`
-- [ ] ClientMessage has Deserialize
-- [ ] ServerMessage has Serialize
-- [ ] new_message() helper creates timestamp
+- [x] File compiles without errors
+- [x] Both enums have `#[serde(tag = "type", rename_all = "snake_case")]`
+- [x] ClientMessage has Deserialize
+- [x] ServerMessage has Serialize
+- [x] new_message() helper creates timestamp
 
 **Verify:**
 ```bash
@@ -216,12 +216,12 @@ _Design: Section 4 (types.rs), Section 5_
 - `src/websocket.rs` (create)
 
 **Done when:**
-- [ ] File compiles
-- [ ] websocket_handler and handle_socket functions exist
-- [ ] UUID v4 client_id generated
-- [ ] Socket split into sender/receiver
-- [ ] Send and receive tasks structured
-- [ ] Prints debug messages
+- [x] File compiles
+- [x] websocket_handler and handle_socket functions exist
+- [x] UUID v4 client_id generated
+- [x] Socket split into sender/receiver
+- [x] Send and receive tasks structured
+- [x] Prints debug messages
 
 **Verify:**
 ```bash
@@ -257,10 +257,10 @@ _Design: Section 4 (websocket.rs)_
 - `src/main.rs` (modify)
 
 **Done when:**
-- [ ] Modules declared at top of main.rs
-- [ ] /ws route wired to websocket_handler
-- [ ] No compile errors
-- [ ] Server starts successfully
+- [x] Modules declared at top of main.rs
+- [x] /ws route wired to websocket_handler
+- [x] No compile errors
+- [x] Server starts successfully
 
 **Verify:**
 ```bash
