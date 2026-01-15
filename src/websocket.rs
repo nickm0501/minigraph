@@ -19,6 +19,48 @@ pub async fn websocket_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
+async fn handle_client_message(
+    msg: ClientMessage,
+    client_id: &str,
+    current_room: &mut Option<DocumentId>,
+    state: &AppState,
+    tx: &mpsc::UnboundedSender<ServerMessage>,
+) -> Result<(), WebSocketError> {
+    match msg {
+        ClientMessage::Join { document_id } => {
+            println!("[WS] Client {} joining room '{}'", client_id, document_id);
+
+            state
+                .join_room(document_id.clone(), client_id.to_string(), tx.clone())
+                .await;
+            *current_room = Some(document_id.clone());
+
+            let response = ServerMessage::Joined {
+                client_id: client_id.to_string(),
+                document_id,
+            };
+
+            let _ = tx.send(response);
+            Ok(())
+        }
+        ClientMessage::SendMessage { text } => {
+            if let Some(ref room) = current_room {
+                println!("[WS] Client {} sending message to room '{}'", client_id, room);
+
+                let message = ServerMessage::new_message(client_id.to_string(), text);
+                state.broadcast_to_room(room, message).await;
+                Ok(())
+            } else {
+                println!(
+                    "[WS] Client {} tried to send message without joining a room",
+                    client_id
+                );
+                Err(WebSocketError::NotInRoom)
+            }
+        }
+    }
+}
+
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let client_id = Uuid::new_v4().to_string();
     println!("Client connected: {}", client_id);
@@ -48,8 +90,6 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     // Receive loop
     let client_id_clone = client_id.clone();
-    // Do we need to clone here, based on how axum handles State(state) in the handler, doesn't
-    // that clone for us??
     let state_clone = state.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
@@ -57,41 +97,15 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 println!("Received from {}: {}", client_id_clone, text);
 
                 match serde_json::from_str::<ClientMessage>(&text) {
-                    Ok(ClientMessage::Join { document_id }) => {
-                        println!(
-                            "[WS] Client {} joining room '{}'",
-                            client_id_clone, document_id
-                        );
-
-                        state_clone
-                            .join_room(document_id.clone(), client_id_clone.clone(), tx.clone())
-                            .await;
-                        current_room = Some(document_id.clone());
-
-                        let response = ServerMessage::Joined {
-                            client_id: client_id_clone.clone(),
-                            document_id,
-                        };
-
-                        let _ = tx.send(response);
-                    }
-                    Ok(ClientMessage::SendMessage { text }) => {
-                        let result = if let Some(ref room) = current_room {
-                            println!(
-                                "[WS] Client {} sending message to room '{}'",
-                                client_id_clone, room
-                            );
-
-                            let message = ServerMessage::new_message(client_id_clone.clone(), text);
-                            state_clone.broadcast_to_room(room, message).await;
-                            Ok(())
-                        } else {
-                            println!(
-                                "[WS] Client {} tried to send message without joining a room",
-                                client_id_clone
-                            );
-                            Err(WebSocketError::NotInRoom)
-                        };
+                    Ok(client_msg) => {
+                        let result = handle_client_message(
+                            client_msg,
+                            &client_id_clone,
+                            &mut current_room,
+                            &state_clone,
+                            &tx,
+                        )
+                        .await;
 
                         if let Err(err) = result {
                             let error = ServerMessage::Error {
