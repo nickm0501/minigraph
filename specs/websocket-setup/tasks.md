@@ -351,12 +351,12 @@ _Design: Section 4 (index.html), Section 5_
 - `src/state.rs` (create)
 
 **Done when:**
-- [ ] AppState struct defined with rooms HashMap
-- [ ] All three methods implemented (join_room, leave_room, broadcast_to_room)
-- [ ] Empty rooms are deleted automatically
-- [ ] Failed sends trigger cleanup
-- [ ] Debug prints for all operations
-- [ ] File compiles
+- [x] AppState struct defined with rooms HashMap
+- [x] All three methods implemented (join_room, leave_room, broadcast_to_room)
+- [x] Empty rooms are deleted automatically
+- [x] Failed sends trigger cleanup
+- [x] Debug prints for all operations
+- [x] File compiles
 
 **Verify:**
 ```bash
