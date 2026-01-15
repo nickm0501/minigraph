@@ -302,12 +302,12 @@ _Design: Section 4 (main.rs)_
 - `static/index.html` (modify)
 
 **Done when:**
-- [ ] WebSocket connects on page load
-- [ ] Status indicator updates on connection state changes
-- [ ] Join button sends JSON message with document_id
-- [ ] Send button sends JSON message with text
-- [ ] Received messages appear in right pane
-- [ ] Console shows all WebSocket events
+- [x] WebSocket connects on page load
+- [x] Status indicator updates on connection state changes
+- [x] Join button sends JSON message with document_id
+- [x] Send button sends JSON message with text
+- [x] Received messages appear in right pane
+- [x] Console shows all WebSocket events
 
 **Verify:**
 ```bash

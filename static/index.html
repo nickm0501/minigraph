@@ -130,5 +130,115 @@
             </div>
         </div>
     </div>
+
+    <script>
+        let ws = null;
+        let currentDocId = null;
+
+        const docIdInput = document.getElementById('doc-id');
+        const joinBtn = document.getElementById('join-btn');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const messagesDiv = document.getElementById('messages');
+
+        function updateStatus(status) {
+            console.log('Connection status:', status);
+            const statusText = status === 'connected' ? 'Connected ✓' :
+                             status === 'connecting' ? 'Connecting...' :
+                             'Disconnected ✗';
+            document.title = `Mini Graph - ${statusText}`;
+        }
+
+        function connectWebSocket() {
+            updateStatus('connecting');
+            ws = new WebSocket('ws://localhost:3030/ws');
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus('connected');
+            };
+
+            ws.onmessage = (event) => {
+                console.log('Received message:', event.data);
+                try {
+                    const msg = JSON.parse(event.data);
+                    displayMessage(JSON.stringify(msg, null, 2));
+                } catch (e) {
+                    displayMessage(event.data);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus('disconnected');
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('disconnected');
+            };
+        }
+
+        function displayMessage(text) {
+            const msgDiv = document.createElement('div');
+            msgDiv.textContent = text;
+            msgDiv.style.padding = '8px';
+            msgDiv.style.backgroundColor = '#f0f0f0';
+            msgDiv.style.borderRadius = '4px';
+            msgDiv.style.wordBreak = 'break-word';
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        joinBtn.addEventListener('click', () => {
+            const docId = docIdInput.value.trim();
+            if (!docId) {
+                alert('Please enter a document ID');
+                return;
+            }
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                currentDocId = docId;
+                const joinMsg = {
+                    type: 'join',
+                    document_id: docId
+                };
+                console.log('Sending join message:', joinMsg);
+                ws.send(JSON.stringify(joinMsg));
+            } else {
+                alert('WebSocket not connected');
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            const text = messageInput.value.trim();
+            if (!text) {
+                alert('Please enter a message');
+                return;
+            }
+            if (!currentDocId) {
+                alert('Please join a document first');
+                return;
+            }
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const sendMsg = {
+                    type: 'send_message',
+                    text: text
+                };
+                console.log('Sending message:', sendMsg);
+                ws.send(JSON.stringify(sendMsg));
+                messageInput.value = '';
+            } else {
+                alert('WebSocket not connected');
+            }
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendBtn.click();
+            }
+        });
+
+        connectWebSocket();
+    </script>
 </body>
 </html>
