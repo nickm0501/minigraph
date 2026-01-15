@@ -119,10 +119,10 @@ _Design: Section 1, Section 6_
 - `static/index.html` (create)
 
 **Done when:**
-- [ ] File exists at static/index.html
-- [ ] Accessing http://localhost:3030/ shows the HTML page
-- [ ] Two-column layout renders correctly
-- [ ] All input elements and buttons present
+- [x] File exists at static/index.html
+- [x] Accessing http://localhost:3030/ shows the HTML page
+- [x] Two-column layout renders correctly
+- [x] All input elements and buttons present
 
 **Verify:**
 ```bash
