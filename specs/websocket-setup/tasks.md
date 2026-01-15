@@ -404,12 +404,12 @@ _Design: Section 4 (state.rs), Section 8_
 - `src/websocket.rs` (modify)
 
 **Done when:**
-- [ ] AppState created in main.rs and passed to router
-- [ ] websocket_handler accepts State parameter
-- [ ] Messages parsed as ClientMessage
-- [ ] Join and SendMessage handled correctly
-- [ ] Cleanup on disconnect works
-- [ ] No compile errors
+- [x] AppState created in main.rs and passed to router
+- [x] websocket_handler accepts State parameter
+- [x] Messages parsed as ClientMessage
+- [x] Join and SendMessage handled correctly
+- [x] Cleanup on disconnect works
+- [x] No compile errors
 
 **Verify:**
 ```bash

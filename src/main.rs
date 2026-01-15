@@ -1,14 +1,18 @@
 use axum::{routing::get, Router};
 use tower_http::services::ServeDir;
 
+mod state;
 mod types;
 mod websocket;
 
 #[tokio::main]
 async fn main() {
+    let state = state::AppState::new();
+
     let app = Router::new()
         .route("/ws", get(websocket::websocket_handler))
-        .nest_service("/", ServeDir::new("static"));
+        .nest_service("/", ServeDir::new("static"))
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3030").await.unwrap();
 
