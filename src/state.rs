@@ -49,7 +49,10 @@ impl AppState {
 
             if clients.is_empty() {
                 rooms.remove(document_id);
-                println!("[STATE] Room '{}' is empty and has been deleted", document_id);
+                println!(
+                    "[STATE] Room '{}' is empty and has been deleted",
+                    document_id
+                );
             }
         }
     }
@@ -87,7 +90,10 @@ impl AppState {
 
                 if clients.is_empty() {
                     rooms.remove(document_id);
-                    println!("[STATE] Room '{}' is empty after cleanup and has been deleted", document_id);
+                    println!(
+                        "[STATE] Room '{}' is empty after cleanup and has been deleted",
+                        document_id
+                    );
                 }
             }
         }
