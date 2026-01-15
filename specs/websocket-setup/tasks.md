@@ -453,11 +453,11 @@ _Design: Section 2, Section 8_
 - None (manual testing)
 
 **Done when:**
-- [ ] 3 clients can join same room
-- [ ] Messages broadcast to all clients in room
-- [ ] Each client has unique client_id
-- [ ] Sender receives their own messages
-- [ ] Disconnected clients stop receiving messages
+- [x] 3 clients can join same room
+- [x] Messages broadcast to all clients in room
+- [x] Each client has unique client_id
+- [x] Sender receives their own messages
+- [x] Disconnected clients stop receiving messages
 
 **Verify:**
 ```bash
@@ -490,9 +490,9 @@ _Design: Section 10 (Test Case 2)_
 - None (manual testing)
 
 **Done when:**
-- [ ] Messages stay isolated to their rooms
-- [ ] No cross-room leakage observed
-- [ ] Server logs show two separate rooms
+- [x] Messages stay isolated to their rooms
+- [x] No cross-room leakage observed
+- [x] Server logs show two separate rooms
 
 **Verify:**
 ```bash
@@ -528,11 +528,11 @@ _Design: Section 10 (Test Case 3)_
 - `src/websocket.rs` (modify)
 
 **Done when:**
-- [ ] WebSocketError enum defined with all variants
-- [ ] Display and Error traits implemented
-- [ ] websocket.rs uses Result<(), WebSocketError>
-- [ ] All error cases properly mapped
-- [ ] Code compiles without errors
+- [x] WebSocketError enum defined with all variants
+- [x] Display and Error traits implemented
+- [x] websocket.rs uses Result<(), WebSocketError>
+- [x] All error cases properly mapped
+- [x] Code compiles without errors
 
 **Verify:**
 ```bash

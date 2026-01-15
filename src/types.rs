@@ -1,8 +1,30 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub type ClientId = String;
 pub type DocumentId = String;
+
+#[derive(Debug)]
+pub enum WebSocketError {
+    InvalidMessage(String),
+    NotInRoom,
+    SendFailed,
+    ConnectionError(String),
+}
+
+impl fmt::Display for WebSocketError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WebSocketError::InvalidMessage(msg) => write!(f, "Invalid message: {}", msg),
+            WebSocketError::NotInRoom => write!(f, "Must join a room before sending messages"),
+            WebSocketError::SendFailed => write!(f, "Failed to send message to client"),
+            WebSocketError::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for WebSocketError {}
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
