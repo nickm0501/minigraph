@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Graph - Collaborative Document</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .left-pane {
+            width: 40%;
+            padding: 20px;
+            border-right: 2px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .right-pane {
+            width: 60%;
+            padding: 20px;
+            background-color: #f5f5f5;
+            overflow-y: auto;
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        label {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        input[type="text"] {
+            padding: 10px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .message-area {
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 15px;
+            min-height: 400px;
+        }
+        
+        .message-area h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-pane">
+            <h1>Mini Graph</h1>
+            
+            <div class="input-group">
+                <label for="doc-id">Document ID:</label>
+                <input type="text" id="doc-id" placeholder="Enter document ID">
+            </div>
+            
+            <button id="join-btn">Join Document</button>
+            
+            <div class="input-group">
+                <label for="message-input">Message:</label>
+                <input type="text" id="message-input" placeholder="Type your message">
+            </div>
+            
+            <button id="send-btn">Send Message</button>
+        </div>
+        
+        <div class="right-pane">
+            <div class="message-area">
+                <h2>Message Stream</h2>
+                <div class="messages" id="messages">
+                    <!-- Messages will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
