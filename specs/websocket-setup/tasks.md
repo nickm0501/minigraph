@@ -31,10 +31,10 @@ created: 2026-01-14T22:30:00Z
 - `static/` (create directory)
 
 **Done when:**
-- [ ] Edition is set to 2021
-- [ ] All 6 dependencies added
-- [ ] static/ directory exists
-- [ ] `cargo build` succeeds with no errors
+- [x] Edition is set to 2021
+- [x] All 6 dependencies added
+- [x] static/ directory exists
+- [x] `cargo build` succeeds with no errors
 
 **Verify:**
 ```bash
@@ -75,10 +75,10 @@ _Design: Section 4_
 - `src/main.rs` (modify)
 
 **Done when:**
-- [ ] Server starts on port 3030
-- [ ] Accessing http://localhost:3030/ returns 404 (no index.html yet)
-- [ ] Server prints startup message with URL
-- [ ] No compile errors or warnings
+- [x] Server starts on port 3030
+- [x] Accessing http://localhost:3030/ returns 404 (no index.html yet)
+- [x] Server prints startup message with URL
+- [x] No compile errors or warnings
 
 **Verify:**
 ```bash
