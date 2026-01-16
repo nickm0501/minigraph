@@ -4,17 +4,16 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::metrics::Metrics;
 use crate::rooms::RoomCommand;
-use crate::types::{ClientId, DocumentId, ServerMessage, WebSocketError};
+use crate::types::{ClientId, DocumentId, RoomCommandError, ServerMessage};
 
 #[derive(Clone)]
 pub struct RoomsHandle {
     tx: mpsc::Sender<RoomCommand>,
-    metrics: Arc<Metrics>,
 }
 
 impl RoomsHandle {
-    pub(crate) fn new(tx: mpsc::Sender<RoomCommand>, metrics: Arc<Metrics>) -> Self {
-        Self { tx, metrics }
+    pub(crate) fn new(tx: mpsc::Sender<RoomCommand>) -> Self {
+        Self { tx }
     }
 
     pub fn join_room(
@@ -23,7 +22,7 @@ impl RoomsHandle {
         client_id: ClientId,
         client_tx: mpsc::Sender<ServerMessage>,
         respond_to: oneshot::Sender<()>,
-    ) -> Result<(), WebSocketError> {
+    ) -> Result<(), RoomCommandError> {
         self.tx
             .try_send(RoomCommand::Join {
                 room,
@@ -31,22 +30,22 @@ impl RoomsHandle {
                 tx: client_tx,
                 respond_to,
             })
-            .map_err(|err| {
-                if matches!(err, mpsc::error::TrySendError::Full(_)) {
-                    self.metrics.inc_actor_cmd_drop();
-                }
-                WebSocketError::SendFailed
+            .map_err(|err| match err {
+                mpsc::error::TrySendError::Full(_) => RoomCommandError::ChannelFull,
+                mpsc::error::TrySendError::Closed(_) => RoomCommandError::ChannelClosed,
             })
     }
 
-    pub fn leave_room(&self, room: DocumentId, client_id: ClientId) -> Result<(), WebSocketError> {
+    pub fn leave_room(
+        &self,
+        room: DocumentId,
+        client_id: ClientId,
+    ) -> Result<(), RoomCommandError> {
         self.tx
             .try_send(RoomCommand::Leave { room, client_id })
-            .map_err(|err| {
-                if matches!(err, mpsc::error::TrySendError::Full(_)) {
-                    self.metrics.inc_actor_cmd_drop();
-                }
-                WebSocketError::SendFailed
+            .map_err(|err| match err {
+                mpsc::error::TrySendError::Full(_) => RoomCommandError::ChannelFull,
+                mpsc::error::TrySendError::Closed(_) => RoomCommandError::ChannelClosed,
             })
     }
 
@@ -54,14 +53,12 @@ impl RoomsHandle {
         &self,
         room: DocumentId,
         message: ServerMessage,
-    ) -> Result<(), WebSocketError> {
+    ) -> Result<(), RoomCommandError> {
         self.tx
             .try_send(RoomCommand::Broadcast { room, message })
-            .map_err(|err| {
-                if matches!(err, mpsc::error::TrySendError::Full(_)) {
-                    self.metrics.inc_actor_cmd_drop();
-                }
-                WebSocketError::SendFailed
+            .map_err(|err| match err {
+                mpsc::error::TrySendError::Full(_) => RoomCommandError::ChannelFull,
+                mpsc::error::TrySendError::Closed(_) => RoomCommandError::ChannelClosed,
             })
     }
 }
@@ -76,7 +73,7 @@ impl AppState {
     pub fn new(rooms_tx: mpsc::Sender<RoomCommand>, metrics: Arc<Metrics>) -> Self {
         crate::logging::vprintln(format_args!("[STATE] Creating new AppState"));
         AppState {
-            rooms: RoomsHandle::new(rooms_tx, metrics.clone()),
+            rooms: RoomsHandle::new(rooms_tx),
             metrics,
         }
     }

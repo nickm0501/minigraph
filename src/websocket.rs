@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::state::AppState;
-use crate::types::{ClientId, ClientMessage, DocumentId, ServerMessage, WebSocketError};
+use crate::types::{ClientId, ClientMessage, DocumentId, RoomCommandError, ServerMessage, WebSocketError};
 
 struct Session {
     client_id: ClientId,
@@ -53,7 +53,12 @@ async fn handle_client_message(
                 session.client_id.clone(),
                 session.tx.clone(),
                 respond_to,
-            )?;
+            ).map_err(|err| {
+                if matches!(err, RoomCommandError::ChannelFull) {
+                    state.metrics.inc_actor_cmd_drop();
+                }
+                WebSocketError::SendFailed
+            })?;
 
             const JOIN_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
             match tokio::time::timeout(JOIN_TIMEOUT, respond_rx).await {
@@ -85,7 +90,12 @@ async fn handle_client_message(
                 ));
 
                 let message = ServerMessage::new_message(session.client_id.clone(), text);
-                state.rooms.broadcast_to_room(room, message)?;
+                state.rooms.broadcast_to_room(room, message).map_err(|err| {
+                    if matches!(err, RoomCommandError::ChannelFull) {
+                        state.metrics.inc_actor_cmd_drop();
+                    }
+                    WebSocketError::SendFailed
+                })?;
                 Ok(())
             } else {
                 crate::logging::vprintln(format_args!(
@@ -102,7 +112,12 @@ async fn handle_client_message(
             ));
 
             let message = ServerMessage::new_message(session.client_id.clone(), text);
-            state.rooms.broadcast_to_room(document_id, message)?;
+            state.rooms.broadcast_to_room(document_id, message).map_err(|err| {
+                if matches!(err, RoomCommandError::ChannelFull) {
+                    state.metrics.inc_actor_cmd_drop();
+                }
+                WebSocketError::SendFailed
+            })?;
             Ok(())
         }
     }
@@ -192,6 +207,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let room = { session.current_room.lock().await.clone() };
     if let Some(document_id) = room {
-        let _ = state.rooms.leave_room(document_id, client_id);
+        if let Err(err) = state.rooms.leave_room(document_id, client_id) {
+            if matches!(err, RoomCommandError::ChannelFull) {
+                state.metrics.inc_actor_cmd_drop();
+            }
+        }
     }
 }

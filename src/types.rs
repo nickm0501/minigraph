@@ -26,6 +26,23 @@ impl fmt::Display for WebSocketError {
 
 impl std::error::Error for WebSocketError {}
 
+#[derive(Debug)]
+pub enum RoomCommandError {
+    ChannelFull,
+    ChannelClosed,
+}
+
+impl fmt::Display for RoomCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RoomCommandError::ChannelFull => write!(f, "Room command channel is full"),
+            RoomCommandError::ChannelClosed => write!(f, "Room command channel is closed"),
+        }
+    }
+}
+
+impl std::error::Error for RoomCommandError {}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
