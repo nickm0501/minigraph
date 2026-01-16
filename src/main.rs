@@ -1,13 +1,17 @@
 use axum::{routing::get, Router};
 use tower_http::services::ServeDir;
 
+mod rooms;
 mod state;
 mod types;
 mod websocket;
 
 #[tokio::main]
 async fn main() {
-    let state = state::AppState::new();
+    let (rooms_tx, rooms_rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(rooms::rooms_actor(rooms_rx));
+
+    let state = state::AppState::new(rooms_tx);
 
     let app = Router::new()
         .route("/ws", get(websocket::websocket_handler))

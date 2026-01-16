@@ -1,101 +1,62 @@
-use crate::types::{ClientId, DocumentId, ServerMessage};
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, oneshot};
+
+use crate::rooms::RoomCommand;
+use crate::types::{ClientId, DocumentId, ServerMessage, WebSocketError};
+
+#[derive(Clone)]
+pub struct RoomsHandle {
+    tx: mpsc::UnboundedSender<RoomCommand>,
+}
+
+impl RoomsHandle {
+    pub(crate) fn new(tx: mpsc::UnboundedSender<RoomCommand>) -> Self {
+        Self { tx }
+    }
+
+    pub fn join_room(
+        &self,
+        room: DocumentId,
+        client_id: ClientId,
+        client_tx: mpsc::UnboundedSender<ServerMessage>,
+        respond_to: oneshot::Sender<()>,
+    ) -> Result<(), WebSocketError> {
+        self.tx
+            .send(RoomCommand::Join {
+                room,
+                client_id,
+                tx: client_tx,
+                respond_to,
+            })
+            .map_err(|_| WebSocketError::SendFailed)
+    }
+
+    pub fn leave_room(&self, room: DocumentId, client_id: ClientId) -> Result<(), WebSocketError> {
+        self.tx
+            .send(RoomCommand::Leave { room, client_id })
+            .map_err(|_| WebSocketError::SendFailed)
+    }
+
+    pub fn broadcast_to_room(
+        &self,
+        room: DocumentId,
+        message: ServerMessage,
+    ) -> Result<(), WebSocketError> {
+        self.tx
+            .send(RoomCommand::Broadcast { room, message })
+            .map_err(|_| WebSocketError::SendFailed)
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
-    rooms: Arc<Mutex<HashMap<DocumentId, Vec<(ClientId, mpsc::UnboundedSender<ServerMessage>)>>>>,
+    pub rooms: RoomsHandle,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(rooms_tx: mpsc::UnboundedSender<RoomCommand>) -> Self {
         println!("[STATE] Creating new AppState");
         AppState {
-            rooms: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    pub async fn join_room(
-        &self,
-        document_id: DocumentId,
-        client_id: ClientId,
-        tx: mpsc::UnboundedSender<ServerMessage>,
-    ) {
-        let mut rooms = self.rooms.lock().await;
-        let clients = rooms.entry(document_id.clone()).or_insert_with(Vec::new);
-        clients.push((client_id.clone(), tx));
-
-        println!(
-            "[STATE] Client {} joined room '{}' (now {} clients)",
-            client_id,
-            document_id,
-            clients.len()
-        );
-    }
-
-    pub async fn leave_room(&self, document_id: &DocumentId, client_id: &ClientId) {
-        let mut rooms = self.rooms.lock().await;
-
-        if let Some(clients) = rooms.get_mut(document_id) {
-            clients.retain(|(id, _)| id != client_id);
-
-            println!(
-                "[STATE] Client {} left room '{}' ({} clients remaining)",
-                client_id,
-                document_id,
-                clients.len()
-            );
-
-            if clients.is_empty() {
-                rooms.remove(document_id);
-                println!(
-                    "[STATE] Room '{}' is empty and has been deleted",
-                    document_id
-                );
-            }
-        }
-    }
-
-    pub async fn broadcast_to_room(&self, document_id: &DocumentId, message: ServerMessage) {
-        let mut rooms = self.rooms.lock().await;
-
-        if let Some(clients) = rooms.get_mut(document_id) {
-            let mut failed_clients = Vec::new();
-
-            println!(
-                "[STATE] Broadcasting to room '{}' ({} clients)",
-                document_id,
-                clients.len()
-            );
-
-            for (client_id, tx) in clients.iter() {
-                if let Err(e) = tx.send(message.clone()) {
-                    println!(
-                        "[STATE] Failed to send to client {} in room '{}': {:?}",
-                        client_id, document_id, e
-                    );
-                    failed_clients.push(client_id.clone());
-                }
-            }
-
-            if !failed_clients.is_empty() {
-                println!(
-                    "[STATE] Cleaning up {} failed clients from room '{}'",
-                    failed_clients.len(),
-                    document_id
-                );
-
-                clients.retain(|(id, _)| !failed_clients.contains(id));
-
-                if clients.is_empty() {
-                    rooms.remove(document_id);
-                    println!(
-                        "[STATE] Room '{}' is empty after cleanup and has been deleted",
-                        document_id
-                    );
-                }
-            }
+            rooms: RoomsHandle::new(rooms_tx),
         }
     }
 }

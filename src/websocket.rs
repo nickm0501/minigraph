@@ -30,9 +30,21 @@ async fn handle_client_message(
         ClientMessage::Join { document_id } => {
             println!("[WS] Client {} joining room '{}'", client_id, document_id);
 
-            state
-                .join_room(document_id.clone(), client_id.to_string(), tx.clone())
-                .await;
+            let (respond_to, respond_rx) = tokio::sync::oneshot::channel();
+            state.rooms.join_room(
+                document_id.clone(),
+                client_id.to_string(),
+                tx.clone(),
+                respond_to,
+            )?;
+
+            const JOIN_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+            match tokio::time::timeout(JOIN_TIMEOUT, respond_rx).await {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) => return Err(WebSocketError::SendFailed),
+                Err(_) => return Err(WebSocketError::SendFailed),
+            }
+
             *current_room = Some(document_id.clone());
 
             let response = ServerMessage::Joined {
@@ -51,7 +63,7 @@ async fn handle_client_message(
                 );
 
                 let message = ServerMessage::new_message(client_id.to_string(), text);
-                state.broadcast_to_room(room, message).await;
+                state.rooms.broadcast_to_room(room.clone(), message)?;
                 Ok(())
             } else {
                 println!(
@@ -144,7 +156,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     println!("Client disconnected: {}", client_id);
 
                     if let Some(document_id) = room {
-                        state.leave_room(&document_id, &client_id).await;
+                        let _ = state.rooms.leave_room(document_id, client_id);
                     }
                 }
                 Err(e) => {
