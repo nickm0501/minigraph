@@ -8,7 +8,7 @@ mod websocket;
 
 #[tokio::main]
 async fn main() {
-    let (rooms_tx, rooms_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (rooms_tx, rooms_rx) = tokio::sync::mpsc::channel(256);
     tokio::spawn(rooms::rooms_actor(rooms_rx));
 
     let state = state::AppState::new(rooms_tx);

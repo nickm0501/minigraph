@@ -5,11 +5,11 @@ use crate::types::{ClientId, DocumentId, ServerMessage, WebSocketError};
 
 #[derive(Clone)]
 pub struct RoomsHandle {
-    tx: mpsc::UnboundedSender<RoomCommand>,
+    tx: mpsc::Sender<RoomCommand>,
 }
 
 impl RoomsHandle {
-    pub(crate) fn new(tx: mpsc::UnboundedSender<RoomCommand>) -> Self {
+    pub(crate) fn new(tx: mpsc::Sender<RoomCommand>) -> Self {
         Self { tx }
     }
 
@@ -17,11 +17,11 @@ impl RoomsHandle {
         &self,
         room: DocumentId,
         client_id: ClientId,
-        client_tx: mpsc::UnboundedSender<ServerMessage>,
+        client_tx: mpsc::Sender<ServerMessage>,
         respond_to: oneshot::Sender<()>,
     ) -> Result<(), WebSocketError> {
         self.tx
-            .send(RoomCommand::Join {
+            .try_send(RoomCommand::Join {
                 room,
                 client_id,
                 tx: client_tx,
@@ -32,7 +32,7 @@ impl RoomsHandle {
 
     pub fn leave_room(&self, room: DocumentId, client_id: ClientId) -> Result<(), WebSocketError> {
         self.tx
-            .send(RoomCommand::Leave { room, client_id })
+            .try_send(RoomCommand::Leave { room, client_id })
             .map_err(|_| WebSocketError::SendFailed)
     }
 
@@ -42,7 +42,7 @@ impl RoomsHandle {
         message: ServerMessage,
     ) -> Result<(), WebSocketError> {
         self.tx
-            .send(RoomCommand::Broadcast { room, message })
+            .try_send(RoomCommand::Broadcast { room, message })
             .map_err(|_| WebSocketError::SendFailed)
     }
 }
@@ -53,7 +53,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(rooms_tx: mpsc::UnboundedSender<RoomCommand>) -> Self {
+    pub fn new(rooms_tx: mpsc::Sender<RoomCommand>) -> Self {
         println!("[STATE] Creating new AppState");
         AppState {
             rooms: RoomsHandle::new(rooms_tx),

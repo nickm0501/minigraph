@@ -24,7 +24,7 @@ async fn handle_client_message(
     client_id: &str,
     current_room: &mut Option<DocumentId>,
     state: &AppState,
-    tx: &mpsc::UnboundedSender<ServerMessage>,
+    tx: &mpsc::Sender<ServerMessage>,
 ) -> Result<(), WebSocketError> {
     match msg {
         ClientMessage::Join { document_id } => {
@@ -52,7 +52,7 @@ async fn handle_client_message(
                 document_id,
             };
 
-            let _ = tx.send(response);
+            let _ = tx.try_send(response);
             Ok(())
         }
         ClientMessage::SendMessage { text } => {
@@ -82,7 +82,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let (mut sender, mut receiver) = socket.split();
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
+    let (tx, mut rx) = mpsc::channel::<ServerMessage>(256);
 
     let mut current_room: Option<DocumentId> = None;
 
@@ -127,7 +127,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             let error = ServerMessage::Error {
                                 message: err.to_string(),
                             };
-                            let _ = tx.send(error);
+                            let _ = tx.try_send(error);
                         }
                     }
                     Err(e) => {
@@ -140,7 +140,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         let error = ServerMessage::Error {
                             message: err.to_string(),
                         };
-                        let _ = tx.send(error);
+                        let _ = tx.try_send(error);
                     }
                 }
             }

@@ -8,8 +8,8 @@ pub(crate) enum RoomCommand {
     Join {
         room: DocumentId,
         client_id: ClientId,
-        tx: mpsc::UnboundedSender<ServerMessage>, // per-client sender stored for future broadcasts
-        respond_to: oneshot::Sender<()>, // ack channel that caller will await for confirmation of
+        tx: mpsc::Sender<ServerMessage>,
+        respond_to: oneshot::Sender<()>,
     },
     Leave {
         room: DocumentId,
@@ -21,8 +21,8 @@ pub(crate) enum RoomCommand {
     },
 }
 
-pub(crate) async fn rooms_actor(mut rx: mpsc::UnboundedReceiver<RoomCommand>) {
-    let mut rooms: HashMap<DocumentId, Vec<(ClientId, mpsc::UnboundedSender<ServerMessage>)>> =
+pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>) {
+    let mut rooms: HashMap<DocumentId, Vec<(ClientId, mpsc::Sender<ServerMessage>)>> =
         HashMap::new();
 
     while let Some(cmd) = rx.recv().await {
@@ -73,9 +73,15 @@ pub(crate) async fn rooms_actor(mut rx: mpsc::UnboundedReceiver<RoomCommand>) {
                     );
 
                     for (client_id, tx) in clients.iter() {
-                        if tx.send(message.clone()).is_err() {
-                            println!("[ACTOR] Failed to send to client {}", client_id);
-                            failed_clients.push(client_id.clone());
+                        match tx.try_send(message.clone()) {
+                            Ok(()) => {}
+                            Err(mpsc::error::TrySendError::Full(_)) => {
+                                // Drop newest message for this slow client.
+                            }
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                println!("[ACTOR] Client channel closed: {}", client_id);
+                                failed_clients.push(client_id.clone());
+                            }
                         }
                     }
 
