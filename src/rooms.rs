@@ -4,9 +4,70 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::metrics::Metrics;
-use crate::types::{ClientId, DocumentId, ServerMessage};
+use crate::types::{ClientId, DocumentId, RoomCommandError, ServerMessage};
 
-pub(crate) enum RoomCommand {
+const ROOMS_ACTOR_CHANNEL_CAPACITY: usize = 256;
+
+#[derive(Clone)]
+pub struct RoomsHandle {
+    tx: mpsc::Sender<RoomCommand>,
+}
+
+impl RoomsHandle {
+    pub(crate) fn start(metrics: Arc<Metrics>) -> Self {
+        let (tx, rx) = mpsc::channel(ROOMS_ACTOR_CHANNEL_CAPACITY);
+        tokio::spawn(rooms_actor(rx, metrics));
+        Self { tx }
+    }
+
+    pub fn join_room(
+        &self,
+        room: DocumentId,
+        client_id: ClientId,
+        client_tx: mpsc::Sender<ServerMessage>,
+        respond_to: oneshot::Sender<()>,
+    ) -> Result<(), RoomCommandError> {
+        self.tx
+            .try_send(RoomCommand::Join {
+                room,
+                client_id,
+                tx: client_tx,
+                respond_to,
+            })
+            .map_err(|err| match err {
+                mpsc::error::TrySendError::Full(_) => RoomCommandError::ChannelFull,
+                mpsc::error::TrySendError::Closed(_) => RoomCommandError::ChannelClosed,
+            })
+    }
+
+    pub fn leave_room(
+        &self,
+        room: DocumentId,
+        client_id: ClientId,
+    ) -> Result<(), RoomCommandError> {
+        self.tx
+            .try_send(RoomCommand::Leave { room, client_id })
+            .map_err(|err| match err {
+                mpsc::error::TrySendError::Full(_) => RoomCommandError::ChannelFull,
+                mpsc::error::TrySendError::Closed(_) => RoomCommandError::ChannelClosed,
+            })
+    }
+
+    pub fn broadcast_to_room(
+        &self,
+        room: DocumentId,
+        message: ServerMessage,
+    ) -> Result<(), RoomCommandError> {
+        self.tx
+            .try_send(RoomCommand::Broadcast { room, message })
+            .map_err(|err| match err {
+                mpsc::error::TrySendError::Full(_) => RoomCommandError::ChannelFull,
+                mpsc::error::TrySendError::Closed(_) => RoomCommandError::ChannelClosed,
+            })
+    }
+}
+
+enum RoomCommand {
     Join {
         room: DocumentId,
         client_id: ClientId,
@@ -23,7 +84,7 @@ pub(crate) enum RoomCommand {
     },
 }
 
-pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>) {
+async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>) {
     let mut rooms: HashMap<DocumentId, Vec<(ClientId, mpsc::Sender<ServerMessage>)>> =
         HashMap::new();
 

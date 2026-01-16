@@ -12,11 +12,10 @@ mod websocket;
 pub async fn run_server() {
     let metrics = metrics::Metrics::new();
 
-    let (rooms_tx, rooms_rx) = tokio::sync::mpsc::channel(256);
-    tokio::spawn(rooms::rooms_actor(rooms_rx, metrics.clone()));
+    let rooms = rooms::RoomsHandle::start(metrics.clone());
     tokio::spawn(metrics::run_resource_sampler(metrics.clone()));
 
-    let state = state::AppState::new(rooms_tx, metrics);
+    let state = state::AppState::new(rooms, metrics);
 
     let app = Router::new()
         .route("/ws", get(websocket::websocket_handler))
