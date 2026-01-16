@@ -42,10 +42,10 @@ async fn handle_client_message(
 ) -> Result<(), WebSocketError> {
     match msg {
         ClientMessage::Join { document_id } => {
-            println!(
+            crate::logging::vprintln(format_args!(
                 "[WS] Client {} joining room '{}'",
                 session.client_id, document_id
-            );
+            ));
 
             let (respond_to, respond_rx) = tokio::sync::oneshot::channel();
             state.rooms.join_room(
@@ -79,28 +79,38 @@ async fn handle_client_message(
             let room = { session.current_room.lock().await.clone() };
 
             if let Some(room) = room {
-                println!(
+                crate::logging::vprintln(format_args!(
                     "[WS] Client {} sending message to room '{}'",
                     session.client_id, room
-                );
+                ));
 
                 let message = ServerMessage::new_message(session.client_id.clone(), text);
                 state.rooms.broadcast_to_room(room, message)?;
                 Ok(())
             } else {
-                println!(
+                crate::logging::vprintln(format_args!(
                     "[WS] Client {} tried to send message without joining a room",
                     session.client_id
-                );
+                ));
                 Err(WebSocketError::NotInRoom)
             }
+        }
+        ClientMessage::SendMessageTo { document_id, text } => {
+            crate::logging::vprintln(format_args!(
+                "[WS] Client {} sending message to room '{}'",
+                session.client_id, document_id
+            ));
+
+            let message = ServerMessage::new_message(session.client_id.clone(), text);
+            state.rooms.broadcast_to_room(document_id, message)?;
+            Ok(())
         }
     }
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let client_id = Uuid::new_v4().to_string();
-    println!("Client connected: {}", client_id);
+    crate::logging::vprintln(format_args!("Client connected: {}", client_id));
 
     let (mut sender, mut receiver) = socket.split();
 
@@ -118,7 +128,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     }
                 }
                 Err(e) => {
-                    println!("[WS] Failed to serialize message: {}", e);
+                    println!("[WS][ERR] Failed to serialize message: {}", e);
                     break;
                 }
             }
@@ -131,7 +141,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             if let Message::Text(text) = msg {
-                println!("Received from {}: {}", session_clone.client_id, text);
+                crate::logging::vprintln(format_args!(
+                    "Received from {}: {}",
+                    session_clone.client_id, text
+                ));
 
                 match serde_json::from_str::<ClientMessage>(&text) {
                     Ok(client_msg) => {
@@ -147,7 +160,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     }
                     Err(e) => {
                         println!(
-                            "[WS] Failed to parse message from {}: {}",
+                            "[WS][ERR] Failed to parse message from {}: {}",
                             session_clone.client_id, e
                         );
 
@@ -166,13 +179,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     tokio::select! {
         result = &mut recv_task => {
             if let Err(e) = result {
-                println!("[WS] Receive task error: {}", e);
+                println!("[WS][ERR] Receive task error: {}", e);
             }
 
             send_task.abort();
         }
         _ = &mut send_task => {
-            println!("Send task completed for client");
+            crate::logging::vprintln(format_args!("Send task completed for client"));
             recv_task.abort();
         }
     }

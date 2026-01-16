@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
 
+use crate::metrics::Metrics;
 use crate::types::{ClientId, DocumentId, ServerMessage};
 
 pub(crate) enum RoomCommand {
@@ -21,7 +23,7 @@ pub(crate) enum RoomCommand {
     },
 }
 
-pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>) {
+pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>) {
     let mut rooms: HashMap<DocumentId, Vec<(ClientId, mpsc::Sender<ServerMessage>)>> =
         HashMap::new();
 
@@ -36,12 +38,12 @@ pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>) {
                 let clients = rooms.entry(room.clone()).or_default();
                 clients.push((client_id.clone(), tx));
 
-                println!(
+                crate::logging::vprintln(format_args!(
                     "[ACTOR] Client {} joined room '{}' (now {} clients)",
                     client_id,
                     room,
                     clients.len()
-                );
+                ));
 
                 let _ = respond_to.send(());
             }
@@ -49,16 +51,19 @@ pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>) {
                 if let Some(clients) = rooms.get_mut(&room) {
                     clients.retain(|(id, _)| id != &client_id);
 
-                    println!(
+                    crate::logging::vprintln(format_args!(
                         "[ACTOR] Client {} left room '{}' ({} remaining)",
                         client_id,
                         room,
                         clients.len()
-                    );
+                    ));
 
                     if clients.is_empty() {
                         rooms.remove(&room);
-                        println!("[ACTOR] Room '{}' is now empty", room);
+                        crate::logging::vprintln(format_args!(
+                            "[ACTOR] Room '{}' is now empty",
+                            room
+                        ));
                     }
                 }
             }
@@ -66,20 +71,21 @@ pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>) {
                 if let Some(clients) = rooms.get_mut(&room) {
                     let mut failed_clients = Vec::new();
 
-                    println!(
+                    crate::logging::vprintln(format_args!(
                         "[ACTOR] Broadcasting to room '{}' ({} clients)",
                         room,
                         clients.len()
-                    );
+                    ));
 
                     for (client_id, tx) in clients.iter() {
                         match tx.try_send(message.clone()) {
                             Ok(()) => {}
                             Err(mpsc::error::TrySendError::Full(_)) => {
                                 // Drop newest message for this slow client.
+                                metrics.inc_fanout_drop();
                             }
                             Err(mpsc::error::TrySendError::Closed(_)) => {
-                                println!("[ACTOR] Client channel closed: {}", client_id);
+                                println!("[ACTOR][ERR] Client channel closed: {}", client_id);
                                 failed_clients.push(client_id.clone());
                             }
                         }
@@ -90,7 +96,10 @@ pub(crate) async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>) {
 
                         if clients.is_empty() {
                             rooms.remove(&room);
-                            println!("[ACTOR] Room '{}' emptied after cleanup", room);
+                            crate::logging::vprintln(format_args!(
+                                "[ACTOR] Room '{}' emptied after cleanup",
+                                room
+                            ));
                         }
                     }
                 }
