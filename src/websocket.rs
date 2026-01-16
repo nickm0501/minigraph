@@ -10,7 +10,23 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::state::AppState;
-use crate::types::{ClientMessage, DocumentId, ServerMessage, WebSocketError};
+use crate::types::{ClientId, ClientMessage, DocumentId, ServerMessage, WebSocketError};
+
+struct Session {
+    client_id: ClientId,
+    current_room: tokio::sync::Mutex<Option<DocumentId>>,
+    tx: mpsc::Sender<ServerMessage>,
+}
+
+impl Session {
+    fn new(client_id: ClientId, tx: mpsc::Sender<ServerMessage>) -> Self {
+        Self {
+            client_id,
+            current_room: tokio::sync::Mutex::new(None),
+            tx,
+        }
+    }
+}
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
@@ -21,20 +37,21 @@ pub async fn websocket_handler(
 
 async fn handle_client_message(
     msg: ClientMessage,
-    client_id: &str,
-    current_room: &mut Option<DocumentId>,
     state: &AppState,
-    tx: &mpsc::Sender<ServerMessage>,
+    session: &Session,
 ) -> Result<(), WebSocketError> {
     match msg {
         ClientMessage::Join { document_id } => {
-            println!("[WS] Client {} joining room '{}'", client_id, document_id);
+            println!(
+                "[WS] Client {} joining room '{}'",
+                session.client_id, document_id
+            );
 
             let (respond_to, respond_rx) = tokio::sync::oneshot::channel();
             state.rooms.join_room(
                 document_id.clone(),
-                client_id.to_string(),
-                tx.clone(),
+                session.client_id.clone(),
+                session.tx.clone(),
                 respond_to,
             )?;
 
@@ -45,30 +62,35 @@ async fn handle_client_message(
                 Err(_) => return Err(WebSocketError::SendFailed),
             }
 
-            *current_room = Some(document_id.clone());
+            {
+                let mut room = session.current_room.lock().await;
+                *room = Some(document_id.clone());
+            }
 
             let response = ServerMessage::Joined {
-                client_id: client_id.to_string(),
+                client_id: session.client_id.clone(),
                 document_id,
             };
 
-            let _ = tx.try_send(response);
+            let _ = session.tx.try_send(response);
             Ok(())
         }
         ClientMessage::SendMessage { text } => {
-            if let Some(ref room) = current_room {
+            let room = { session.current_room.lock().await.clone() };
+
+            if let Some(room) = room {
                 println!(
                     "[WS] Client {} sending message to room '{}'",
-                    client_id, room
+                    session.client_id, room
                 );
 
-                let message = ServerMessage::new_message(client_id.to_string(), text);
-                state.rooms.broadcast_to_room(room.clone(), message)?;
+                let message = ServerMessage::new_message(session.client_id.clone(), text);
+                state.rooms.broadcast_to_room(room, message)?;
                 Ok(())
             } else {
                 println!(
                     "[WS] Client {} tried to send message without joining a room",
-                    client_id
+                    session.client_id
                 );
                 Err(WebSocketError::NotInRoom)
             }
@@ -83,8 +105,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
 
     let (tx, mut rx) = mpsc::channel::<ServerMessage>(256);
-
-    let mut current_room: Option<DocumentId> = None;
+    let session = std::sync::Arc::new(Session::new(client_id.clone(), tx));
 
     // Loop in a thread and receive messages in an channel
     // and send them back to the WS client.
@@ -105,63 +126,47 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     });
 
     // Loop in a thread and receive messages from the client
-    let client_id_clone = client_id.clone();
     let state_clone = state.clone();
+    let session_clone = session.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             if let Message::Text(text) = msg {
-                println!("Received from {}: {}", client_id_clone, text);
+                println!("Received from {}: {}", session_clone.client_id, text);
 
                 match serde_json::from_str::<ClientMessage>(&text) {
                     Ok(client_msg) => {
-                        let result = handle_client_message(
-                            client_msg,
-                            &client_id_clone,
-                            &mut current_room,
-                            &state_clone,
-                            &tx,
-                        )
-                        .await;
+                        let result =
+                            handle_client_message(client_msg, &state_clone, &session_clone).await;
 
                         if let Err(err) = result {
                             let error = ServerMessage::Error {
                                 message: err.to_string(),
                             };
-                            let _ = tx.try_send(error);
+                            let _ = session_clone.tx.try_send(error);
                         }
                     }
                     Err(e) => {
                         println!(
                             "[WS] Failed to parse message from {}: {}",
-                            client_id_clone, e
+                            session_clone.client_id, e
                         );
 
                         let err = WebSocketError::InvalidMessage(e.to_string());
                         let error = ServerMessage::Error {
                             message: err.to_string(),
                         };
-                        let _ = tx.try_send(error);
+                        let _ = session_clone.tx.try_send(error);
                     }
                 }
             }
         }
-        (client_id_clone, current_room)
     });
 
     // Wait for either task to finish
     tokio::select! {
         result = &mut recv_task => {
-            match result {
-                Ok((client_id, room)) => {
-                    println!("Client disconnected: {}", client_id);
-
-                    if let Some(document_id) = room {
-                        let _ = state.rooms.leave_room(document_id, client_id);
-                    }
-                }
-                Err(e) => {
-                    println!("[WS] Receive task error: {}", e);
-                }
+            if let Err(e) = result {
+                println!("[WS] Receive task error: {}", e);
             }
 
             send_task.abort();
@@ -170,5 +175,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             println!("Send task completed for client");
             recv_task.abort();
         }
+    }
+
+    let room = { session.current_room.lock().await.clone() };
+    if let Some(document_id) = room {
+        let _ = state.rooms.leave_room(document_id, client_id);
     }
 }
