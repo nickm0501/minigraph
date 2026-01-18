@@ -3,6 +3,7 @@ use tower_http::services::ServeDir;
 
 pub mod metrics;
 pub mod types;
+pub mod wal;
 
 mod logging;
 mod rooms;
