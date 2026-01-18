@@ -2,6 +2,7 @@ use axum::{routing::get, Router};
 use tower_http::services::ServeDir;
 
 pub mod metrics;
+pub mod postgres;
 pub mod types;
 pub mod wal;
 
