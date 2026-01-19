@@ -70,6 +70,10 @@ pub enum ServerMessage {
         text: String,
         timestamp: u64,
     },
+    Invalidation {
+        hints: Vec<String>,
+        timestamp: u64,
+    },
     Error {
         message: String,
     },

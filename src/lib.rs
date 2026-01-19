@@ -21,9 +21,11 @@ pub async fn run_server() {
     }
 
     let rooms = rooms::RoomsHandle::start(metrics.clone());
+    let wal_reader = wal::WalReaderHandle::start(pg_config.clone(), rooms.clone(), metrics.clone());
+
     tokio::spawn(metrics::run_resource_sampler(metrics.clone()));
 
-    let state = state::AppState::new(rooms, metrics);
+    let state = state::AppState::new(rooms, wal_reader, metrics);
 
     let app = Router::new()
         .route("/ws", get(websocket::websocket_handler))

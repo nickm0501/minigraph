@@ -108,6 +108,8 @@ async fn run_setup_queries(
         Err(err) => return Err(err),
     }
 
+    ensure_replication_slot(client, config).await?;
+
     Ok(())
 }
 
@@ -118,6 +120,53 @@ fn is_duplicate_object(error: &tokio_postgres::Error) -> bool {
     };
 
     db_error.code().code() == "42710"
+}
+
+async fn ensure_replication_slot(
+    client: &Client,
+    config: &postgres::PostgresConfig,
+) -> Result<(), SetupError> {
+    let slot_name = config.slot_name();
+
+    // Slot names are SQL values here (not identifiers), so we can safely bind them.
+    let slot_exists_query = "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1";
+
+    let exists = client
+        .query_opt(slot_exists_query, &[&slot_name])
+        .await
+        .map_err(|error| SetupError::QueryFailed {
+            query: slot_exists_query.to_string(),
+            error,
+        })?
+        .is_some();
+
+    if exists {
+        crate::logging::vprintln(format_args!("[PG][SETUP] slot exists: {slot_name}"));
+        return Ok(());
+    }
+
+    crate::logging::vprintln(format_args!("[PG][SETUP] creating slot: {slot_name}"));
+
+    let create_slot_query =
+        "SELECT slot_name, lsn::text FROM pg_create_logical_replication_slot($1, 'pgoutput')";
+
+    // Create slot and log the consistent point (LSN) where it becomes usable.
+    let row = client
+        .query_one(create_slot_query, &[&slot_name])
+        .await
+        .map_err(|error| SetupError::QueryFailed {
+            query: create_slot_query.to_string(),
+            error,
+        })?;
+
+    let created_slot_name: String = row.get(0);
+    let consistent_point: String = row.get(1);
+
+    crate::logging::vprintln(format_args!(
+        "[PG][SETUP] created slot: {created_slot_name} consistent_point={consistent_point}"
+    ));
+
+    Ok(())
 }
 
 async fn exec(client: &Client, query: &str) -> Result<(), SetupError> {
