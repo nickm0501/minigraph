@@ -66,7 +66,7 @@ Focus: Validate WAL streaming works end-to-end. Keep iteration tight with small 
   - _Design: PostgreSQL Setup Task_
 
 - [ ] 1.2.2 Implement PostgreSQL setup task (tables, replica identity, publication)
-  - **Do**: Create `src/postgres/setup.rs` with `setup_postgres()` async function. Execute idempotent DDL: (1) CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY), (2) CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, document_id TEXT NOT NULL, text TEXT), (3) ALTER TABLE comments REPLICA IDENTITY FULL, (4) CREATE PUBLICATION IF NOT EXISTS mini_graph_pub FOR TABLE documents, comments. Log each action. Handle errors with `SetupError` enum.
+  - **Do**: Create `src/postgres/setup.rs` with `setup_postgres()` async function. Execute idempotent DDL: (1) CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY), (2) CREATE EXTENSION IF NOT EXISTS pgcrypto, (3) CREATE TABLE IF NOT EXISTS comments (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), document_id TEXT NOT NULL, text TEXT), (4) ALTER TABLE comments REPLICA IDENTITY FULL, (5) CREATE PUBLICATION mini_graph_pub FOR TABLE documents, comments (treat "already exists" as success). Log each action. Handle errors with `SetupError` enum.
   - **Files**:
     - `/Users/nickmaietta/projects/mini-graph/src/postgres/setup.rs` (create)
     - `/Users/nickmaietta/projects/mini-graph/src/postgres/mod.rs` (modify to export)
@@ -186,7 +186,7 @@ Focus: Validate WAL streaming works end-to-end. Keep iteration tight with small 
   - **Do**: Implement `wal_reader_actor()` async function using `pgwire-replication` that: (1) Connects to PostgreSQL using the replication protocol, (2) Starts logical replication for slot `mini_graph_slot` and publication `mini_graph_pub`, (3) Receives replication events in a loop, (4) Logs raw/decoded events. For POC: minimal error handling, no reconnection logic yet.
   - **Files**: `/Users/nickmaietta/projects/mini-graph/src/wal/reader.rs`
   - **Done when**: WAL reader connects and logs WAL events when SQL changes occur
-  - **Verify**: `cargo run`, then in psql: `INSERT INTO comments VALUES ('c1', 'doc1', 'hello')`, observe logs
+  - **Verify**: `cargo run`, then in psql: `INSERT INTO comments (document_id, text) VALUES ('doc1', 'hello')`, observe logs
   - **Commit**: `feat(wal): implement WAL reader core loop (POC)`
   - _Requirements: US-1, AC-1.1-1.7, FR-1_
   - _Design: WAL Reader Actor, Technical Decisions (WAL consumption crate)_
@@ -314,7 +314,7 @@ Focus: Validate WAL streaming works end-to-end. Keep iteration tight with small 
 ### 1.10 POC Checkpoint
 
 - [ ] 1.10.1 End-to-end manual verification
-  - **Do**: (1) Start server with `cargo run`, (2) Open browser to `http://localhost:3030`, (3) Join document room "doc1" via WebSocket, (4) In psql: `INSERT INTO comments VALUES ('c1', 'doc1', 'test')`, (5) Observe `ServerMessage::Invalidation` in browser DevTools console, (6) Verify `/debug/metrics` shows WAL metrics. Document any issues found.
+  - **Do**: (1) Start server with `cargo run`, (2) Open browser to `http://localhost:3030`, (3) Join document room "doc1" via WebSocket, (4) In psql: `INSERT INTO comments (document_id, text) VALUES ('doc1', 'test')`, (5) Observe `ServerMessage::Invalidation` in browser DevTools console, (6) Verify `/debug/metrics` shows WAL metrics. Document any issues found.
   - **Files**: None (verification only)
   - **Done when**: Full flow works: DB change -> WAL -> hint -> rooms -> browser
   - **Verify**: Manual verification as described

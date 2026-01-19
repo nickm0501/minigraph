@@ -14,6 +14,12 @@ mod websocket;
 pub async fn run_server() {
     let metrics = metrics::Metrics::new();
 
+    let pg_config = postgres::PostgresConfig::from_env();
+    if let Err(err) = postgres::setup_postgres(&pg_config).await {
+        eprintln!("[PG][ERR] setup failed: {err}");
+        std::process::exit(1);
+    }
+
     let rooms = rooms::RoomsHandle::start(metrics.clone());
     tokio::spawn(metrics::run_resource_sampler(metrics.clone()));
 

@@ -18,7 +18,27 @@ impl fmt::Display for SetupError {
         match self {
             SetupError::ConnectionFailed(err) => write!(f, "Postgres connection failed: {err}"),
             SetupError::QueryFailed { query, error } => {
-                write!(f, "Postgres setup query failed ({query}): {error}")
+                if let Some(db_error) = error.as_db_error() {
+                    let detail = db_error
+                        .detail()
+                        .map(|d| format!(" detail={d}"))
+                        .unwrap_or_default();
+                    let hint = db_error
+                        .hint()
+                        .map(|h| format!(" hint={h}"))
+                        .unwrap_or_default();
+
+                    write!(
+                        f,
+                        "Postgres setup query failed ({query}): code={} message={}{}{}",
+                        db_error.code().code(),
+                        db_error.message(),
+                        detail,
+                        hint
+                    )
+                } else {
+                    write!(f, "Postgres setup query failed ({query}): {error}")
+                }
             }
         }
     }
@@ -63,13 +83,41 @@ async fn run_setup_queries(
     // TODO: `publication_name` is an operator-provided env var used as an SQL identifier.
     // Identifiers can't be parameterized, so we should validate it (e.g., [a-zA-Z0-9_])
     // to avoid accidental bad names and prevent SQL injection via env vars.
+    //
+    // Also note: Postgres does not support `CREATE PUBLICATION IF NOT EXISTS`, so we do
+    // a best-effort create and treat "already exists" as success.
     let create_publication = format!(
-        "CREATE PUBLICATION IF NOT EXISTS {} FOR TABLE documents, comments",
+        "CREATE PUBLICATION {} FOR TABLE documents, comments",
         config.publication_name
     );
-    exec(client, &create_publication).await?;
+
+    match exec(client, &create_publication).await {
+        Ok(()) => {}
+        Err(SetupError::QueryFailed { query, error }) => {
+            // Postgres 18 doesn't support IF NOT EXISTS for Publication
+            // so treat a duplicate for a publication as a success
+            if is_duplicate_object(&error) {
+                crate::logging::vprintln(format_args!(
+                    "[PG][SETUP] publication already exists: {}",
+                    config.publication_name
+                ));
+            } else {
+                return Err(SetupError::QueryFailed { query, error });
+            }
+        }
+        Err(err) => return Err(err),
+    }
 
     Ok(())
+}
+
+fn is_duplicate_object(error: &tokio_postgres::Error) -> bool {
+    // "duplicate_object" (42710) covers cases like "publication already exists".
+    let Some(db_error) = error.as_db_error() else {
+        return false;
+    };
+
+    db_error.code().code() == "42710"
 }
 
 async fn exec(client: &Client, query: &str) -> Result<(), SetupError> {
