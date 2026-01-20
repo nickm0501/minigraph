@@ -929,6 +929,7 @@ dependencies = [
  "tokio-postgres",
  "tokio-tungstenite 0.23.1",
  "tower-http",
+ "url",
  "uuid",
 ]
 

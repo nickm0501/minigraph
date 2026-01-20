@@ -336,6 +336,11 @@ After POC validated, clean up code structure and add resilience.
 
 - [ ] 2.2 Add exponential backoff reconnection logic
   - **Do**: Implement `reconnect_with_backoff()` function for WAL reader. On connection loss: log error, retry with exponential backoff (1s, 2s, 4s, max 30s). Resume from last applied LSN on reconnect.
+
+- [ ] 2.x Transaction bookkeeping for interleaved/streamed transactions
+  - **Context**: pgoutput protocol v2+ can stream in-progress transactions, and WAL records can interleave across transactions at the physical WAL level.
+  - **Do**: Replace the single `Option<TransactionBuffer>` with per-transaction bookkeeping keyed by `xid` (or the protocol’s streaming transaction identifier if enabled). Ensure we only emit invalidations at commit boundaries for each transaction and keep the “fail fast on schema change” invariant.
+  - **Motivation**: The current Phase 1 implementation assumes a single in-flight transaction (BEGIN -> DML -> COMMIT). This is sufficient for a demo but should be hardened before enabling streaming or handling large interleaved workloads.
   - **Files**: `/Users/nickmaietta/projects/mini-graph/src/wal/reader.rs`
   - **Done when**: WAL reader reconnects automatically after PostgreSQL restart
   - **Verify**: Start server, stop PostgreSQL, observe retry logs, start PostgreSQL, observe reconnection

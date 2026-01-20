@@ -8,6 +8,15 @@ pub struct PostgresConfig {
     pub slot_name_suffix: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ConnectionInfo {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub password: Option<String>,
+    pub database: String,
+}
+
 impl PostgresConfig {
     pub fn from_env() -> Self {
         // Keep local/dev easy: DATABASE_URL is optional and defaults to localhost.
@@ -44,5 +53,36 @@ impl PostgresConfig {
 
         let suffix = suffix.trim_start_matches('_');
         format!("{}_{}", self.slot_name_base, suffix)
+    }
+
+    pub fn connection_info(&self) -> Result<ConnectionInfo, url::ParseError> {
+        let url = url::Url::parse(&self.database_url)?;
+
+        let host = url.host_str().unwrap_or("localhost").to_string();
+        let port = url.port().unwrap_or(5432);
+
+        let user = if url.username().is_empty() {
+            "postgres".to_string()
+        } else {
+            url.username().to_string()
+        };
+
+        let password = url.password().map(|p| p.to_string());
+
+        // url.path() includes a leading '/', so strip it.
+        let database = url.path().strip_prefix('/').unwrap_or(url.path());
+        let database = if database.is_empty() {
+            "postgres".to_string()
+        } else {
+            database.to_string()
+        };
+
+        Ok(ConnectionInfo {
+            host,
+            port,
+            user,
+            password,
+            database,
+        })
     }
 }

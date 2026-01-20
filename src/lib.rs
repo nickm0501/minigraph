@@ -21,7 +21,8 @@ pub async fn run_server() {
     }
 
     let rooms = rooms::RoomsHandle::start(metrics.clone());
-    let wal_reader = wal::WalReaderHandle::start(pg_config.clone(), rooms.clone(), metrics.clone());
+    let sink = std::sync::Arc::new(wal::RoomsInvalidationSink::new(rooms.clone()));
+    let wal_reader = wal::WalReaderHandle::start(pg_config.clone(), sink, metrics.clone());
 
     tokio::spawn(metrics::run_resource_sampler(metrics.clone()));
 

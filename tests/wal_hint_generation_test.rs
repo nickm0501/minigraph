@@ -140,3 +140,53 @@ fn wal_hint_missing_document_id_returns_error() {
         }
     );
 }
+
+#[test]
+fn wal_hint_transaction_buffer_dedupes() {
+    let mut tx = mini_graph::wal::TransactionBuffer::default();
+
+    let hint = QueryHint {
+        table: "comments".to_string(),
+        column: "document_id".to_string(),
+        value: "doc1".to_string(),
+    };
+
+    tx.add_all([hint.clone(), hint]);
+
+    let taken = tx.take();
+    assert_eq!(taken.len(), 1);
+    assert!(tx.is_empty());
+}
+
+#[test]
+fn wal_hint_router_routes_document_scoped_hints() {
+    use std::collections::HashSet;
+
+    let hints: HashSet<QueryHint> = [
+        QueryHint {
+            table: "comments".to_string(),
+            column: "document_id".to_string(),
+            value: "doc1".to_string(),
+        },
+        QueryHint {
+            table: "documents".to_string(),
+            column: "id".to_string(),
+            value: "doc2".to_string(),
+        },
+    ]
+    .into_iter()
+    .collect();
+
+    let mut routed = mini_graph::wal::HintRouter::route(hints);
+
+    let doc1 = routed.remove("doc1").unwrap();
+    let doc2 = routed.remove("doc2").unwrap();
+
+    assert!(routed.is_empty());
+
+    assert_eq!(doc1.len(), 1);
+    assert_eq!(doc1[0].to_key(), "comments:document_id:doc1");
+
+    assert_eq!(doc2.len(), 1);
+    assert_eq!(doc2[0].to_key(), "documents:id:doc2");
+}

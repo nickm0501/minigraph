@@ -7,6 +7,7 @@ Agents working here should keep changes minimal, idiomatic, and clippy-clean.
 - Whenever you come across any design decision, stop and list the viable options (with tradeoffs) before implementing.
 - Whenever you find an invariant or edge case not covered by the current plan, stop and surface it so we can decide together.
 - When deciding where domain methods live (e.g. on `AppState` vs a dedicated handle/newtype like `RoomsHandle`), stop and propose 2–3 viable options with tradeoffs (ergonomics, API surface area, coupling, testability) before implementing.
+- When introducing cross-module dependencies (e.g. WAL reader -> rooms), proactively surface coupling/encapsulation options (direct handle, trait boundary, channel boundary) before implementing.
 - When a function starts taking many related parameters (e.g. `client_id`, `current_room`, `tx`), consider encapsulating them into a small struct (e.g. `Session`) to reduce plumbing, clarify invariants, and make future refactors/extractions easier; propose this as a cleanup opportunity when it improves readability without obscuring control flow.
 - After writing code, explain what changed and why (focus on tradeoffs and invariants).
 
@@ -184,7 +185,7 @@ Optional future direction (if the project grows):
 
 ## Concurrency / State
 
-- `AppState` currently stores rooms in `Arc<Mutex<HashMap<...>>>`.
+- `AppState` stores actor handles (e.g., `RoomsHandle`) and shared resources (e.g., `Arc<Metrics>`). Room membership is owned by the rooms actor.
 - Do not keep per-client senders in multiple places unless ownership is clear.
 - When broadcasting, handle failed senders by cleaning them up (current behavior).
 
