@@ -114,20 +114,29 @@ async fn wal_reader_actor(
 
     const SLOT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
     const SLOT_POLL_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
-    const SLOT_HEALTH_QUERY: &str = "\
-SELECT\
-  s.active,\
-  COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), s.restart_lsn), 0)::bigint AS retained_bytes,\
-  COALESCE(EXTRACT(EPOCH FROM sr.flush_lag), 0)::bigint AS lag_seconds\
-FROM pg_replication_slots s\
-LEFT JOIN pg_stat_replication sr ON sr.pid = s.active_pid\
-WHERE s.slot_name = $1\
-";
+    const SLOT_HEALTH_QUERY: &str = r#"
+SELECT
+  s.active,
+  COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), s.restart_lsn), 0)::bigint AS retained_bytes,
+  COALESCE(EXTRACT(EPOCH FROM sr.flush_lag), 0)::bigint AS lag_seconds
+FROM pg_replication_slots s
+LEFT JOIN pg_stat_replication sr ON sr.pid = s.active_pid
+WHERE s.slot_name = $1
+"#;
 
     let sql_client = match postgres::connect(&config).await {
         Ok(client) => Some(client),
         Err(err) => {
-            eprintln!("[WAL][ERR] slot health connection failed: {err}");
+            if let Some(db_err) = err.as_db_error() {
+                eprintln!(
+                    "[WAL][ERR] slot health connection failed: {} (SQLSTATE {:?})",
+                    db_err.message(),
+                    db_err.code()
+                );
+            } else {
+                eprintln!("[WAL][ERR] slot health connection failed: {err:?}");
+            }
+
             None
         }
     };
@@ -165,7 +174,16 @@ WHERE s.slot_name = $1\
                 {
                     Ok(Ok(row)) => row,
                     Ok(Err(err)) => {
-                        eprintln!("[WAL][ERR] slot health query failed: {err}");
+                        if let Some(db_err) = err.as_db_error() {
+                            eprintln!(
+                                "[WAL][ERR] slot health query failed: {} (SQLSTATE {:?})",
+                                db_err.message(),
+                                db_err.code()
+                            );
+                        } else {
+                            eprintln!("[WAL][ERR] slot health query failed: {err:?}");
+                        }
+
                         continue;
                     }
                     Err(_) => {
