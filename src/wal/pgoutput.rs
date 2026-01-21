@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::wal::byte_reader::ByteReader;
-use crate::wal::Value;
+use crate::wal::{TupleData, Value, WalEvent};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Relation {
@@ -51,6 +53,11 @@ impl std::fmt::Display for PgOutputError {
 }
 
 impl std::error::Error for PgOutputError {}
+
+#[derive(Debug)]
+pub enum PgOutputConversionError {
+    SchemaChange,
+}
 
 pub fn parse_pgoutput_messages(data: &[u8]) -> Result<Vec<PgOutputMessage>, PgOutputError> {
     let mut reader = ByteReader::new(data);
@@ -188,6 +195,100 @@ fn parse_tuple(reader: &mut ByteReader<'_>) -> Result<Vec<Value>, PgOutputError>
     }
 
     Ok(values)
+}
+
+pub fn pgoutput_to_wal_event(
+    relations: &mut HashMap<u32, Relation>,
+    msg: PgOutputMessage,
+) -> Result<Option<WalEvent>, PgOutputConversionError> {
+    match msg {
+        PgOutputMessage::Relation(rel) => {
+            if let Some(existing) = relations.get(&rel.id) {
+                if existing != &rel {
+                    eprintln!(
+                        "[WAL][ERR] schema change detected for relation_id={} ({}.{}); restart required",
+                        rel.id, rel.namespace, rel.name
+                    );
+                    return Err(PgOutputConversionError::SchemaChange);
+                }
+
+                // Same relation message seen again; ignore.
+                return Ok(None);
+            }
+
+            crate::logging::vprintln(format_args!(
+                "[WAL] relation {}.{} id={} columns={}",
+                rel.namespace,
+                rel.name,
+                rel.id,
+                rel.columns.len()
+            ));
+
+            relations.insert(rel.id, rel);
+            Ok(None)
+        }
+        PgOutputMessage::Insert {
+            relation_id,
+            new_values,
+        } => {
+            let Some(rel) = relations.get(&relation_id) else {
+                eprintln!("[WAL][ERR] insert for unknown relation_id={relation_id}");
+                return Ok(None);
+            };
+
+            let tuple = TupleData::from_values(&rel.columns, new_values);
+            let event = WalEvent::Insert {
+                relation_id,
+                relation_name: rel.name.clone(),
+                new_tuple: tuple,
+            };
+
+            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
+            Ok(Some(event))
+        }
+        PgOutputMessage::Update {
+            relation_id,
+            old_values,
+            new_values,
+        } => {
+            let Some(rel) = relations.get(&relation_id) else {
+                eprintln!("[WAL][ERR] update for unknown relation_id={relation_id}");
+                return Ok(None);
+            };
+
+            let old_tuple = old_values.map(|values| TupleData::from_values(&rel.columns, values));
+            let new_tuple = TupleData::from_values(&rel.columns, new_values);
+
+            let event = WalEvent::Update {
+                relation_id,
+                relation_name: rel.name.clone(),
+                old_tuple,
+                new_tuple,
+            };
+
+            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
+            Ok(Some(event))
+        }
+        PgOutputMessage::Delete {
+            relation_id,
+            old_values,
+        } => {
+            let Some(rel) = relations.get(&relation_id) else {
+                eprintln!("[WAL][ERR] delete for unknown relation_id={relation_id}");
+                return Ok(None);
+            };
+
+            let old_tuple = TupleData::from_values(&rel.columns, old_values);
+            let event = WalEvent::Delete {
+                relation_id,
+                relation_name: rel.name.clone(),
+                old_tuple,
+            };
+
+            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
+            Ok(Some(event))
+        }
+    }
 }
 
 #[cfg(test)]

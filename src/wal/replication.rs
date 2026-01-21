@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use crate::metrics::Metrics;
 use crate::postgres::PostgresConfig;
 use crate::wal::{
-    generate_invalidation_hints, parse_pgoutput_messages, HintGenError, HintRouter,
-    InvalidationSink, PgOutputMessage, Relation, TransactionBuffer, TupleData, Value, WalEvent,
+    generate_invalidation_hints, parse_pgoutput_messages, pgoutput_to_wal_event, HintGenError,
+    HintRouter, InvalidationSink, PgOutputConversionError, Relation, TransactionBuffer,
 };
 
 const WAL_READER_CHANNEL_CAPACITY: usize = 256;
@@ -132,7 +132,7 @@ async fn wal_reader_actor(
                                 for msg in messages {
                                     let event = match pgoutput_to_wal_event(&mut relations, msg) {
                                         Ok(ev) => ev,
-                                        Err(PgoutputAction::SchemaChange) => return,
+                                        Err(PgOutputConversionError::SchemaChange) => return,
                                     };
 
                                     let Some(event) = event else {
@@ -163,7 +163,10 @@ async fn wal_reader_actor(
                         transaction = Some(TransactionBuffer::default());
                     }
                     Ok(Some(ReplicationEvent::Commit { end_lsn, .. })) => {
-                        let timestamp = now_millis();
+                        let timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
 
                         if let Some(mut tx) = transaction.take() {
                             let hints = tx.take();
@@ -200,120 +203,4 @@ async fn wal_reader_actor(
     }
 
     crate::logging::vprintln(format_args!("[WAL] wal reader stopped"));
-}
-
-enum PgoutputAction {
-    SchemaChange,
-}
-
-fn pgoutput_to_wal_event(
-    relations: &mut HashMap<u32, Relation>,
-    msg: PgOutputMessage,
-) -> Result<Option<WalEvent>, PgoutputAction> {
-    match msg {
-        PgOutputMessage::Relation(rel) => {
-            if let Some(existing) = relations.get(&rel.id) {
-                if existing != &rel {
-                    eprintln!(
-                        "[WAL][ERR] schema change detected for relation_id={} ({}.{}); restart required",
-                        rel.id, rel.namespace, rel.name
-                    );
-                    return Err(PgoutputAction::SchemaChange);
-                }
-
-                // Same relation message seen again; ignore.
-                return Ok(None);
-            }
-
-            crate::logging::vprintln(format_args!(
-                "[WAL] relation {}.{} id={} columns={}",
-                rel.namespace,
-                rel.name,
-                rel.id,
-                rel.columns.len()
-            ));
-
-            relations.insert(rel.id, rel);
-            Ok(None)
-        }
-        PgOutputMessage::Insert {
-            relation_id,
-            new_values,
-        } => {
-            let Some(rel) = relations.get(&relation_id) else {
-                eprintln!("[WAL][ERR] insert for unknown relation_id={relation_id}");
-                return Ok(None);
-            };
-
-            let tuple = tuple_data_from_values(rel, new_values);
-            let event = WalEvent::Insert {
-                relation_id,
-                relation_name: rel.name.clone(),
-                new_tuple: tuple,
-            };
-
-            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
-            Ok(Some(event))
-        }
-        PgOutputMessage::Update {
-            relation_id,
-            old_values,
-            new_values,
-        } => {
-            let Some(rel) = relations.get(&relation_id) else {
-                eprintln!("[WAL][ERR] update for unknown relation_id={relation_id}");
-                return Ok(None);
-            };
-
-            let old_tuple = old_values.map(|values| tuple_data_from_values(rel, values));
-            let new_tuple = tuple_data_from_values(rel, new_values);
-
-            let event = WalEvent::Update {
-                relation_id,
-                relation_name: rel.name.clone(),
-                old_tuple,
-                new_tuple,
-            };
-
-            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
-            Ok(Some(event))
-        }
-        PgOutputMessage::Delete {
-            relation_id,
-            old_values,
-        } => {
-            let Some(rel) = relations.get(&relation_id) else {
-                eprintln!("[WAL][ERR] delete for unknown relation_id={relation_id}");
-                return Ok(None);
-            };
-
-            let old_tuple = tuple_data_from_values(rel, old_values);
-            let event = WalEvent::Delete {
-                relation_id,
-                relation_name: rel.name.clone(),
-                old_tuple,
-            };
-
-            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
-            Ok(Some(event))
-        }
-    }
-}
-
-fn tuple_data_from_values(relation: &Relation, values: Vec<Value>) -> TupleData {
-    let mut columns = std::collections::HashMap::new();
-
-    for (idx, column_name) in relation.columns.iter().enumerate() {
-        let value = values.get(idx).cloned().unwrap_or(Value::Null);
-        columns.insert(column_name.clone(), value);
-    }
-
-    TupleData { columns }
-}
-
-fn now_millis() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }

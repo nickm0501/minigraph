@@ -38,6 +38,19 @@ pub struct TupleData {
     pub columns: HashMap<String, Value>,
 }
 
+impl TupleData {
+    pub fn from_values(column_names: &[String], values: Vec<Value>) -> Self {
+        let mut columns = HashMap::new();
+
+        for (idx, column_name) in column_names.iter().enumerate() {
+            let value = values.get(idx).cloned().unwrap_or(Value::Null);
+            columns.insert(column_name.clone(), value);
+        }
+
+        Self { columns }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Null,
