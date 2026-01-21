@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::logging::vprintln;
 use crate::wal::byte_reader::ByteReader;
 use crate::wal::{TupleData, Value, WalEvent};
 
@@ -201,7 +202,7 @@ pub fn pgoutput_to_wal_event(
     relations: &mut HashMap<u32, Relation>,
     msg: PgOutputMessage,
 ) -> Result<Option<WalEvent>, PgOutputConversionError> {
-    match msg {
+    let result = match msg {
         PgOutputMessage::Relation(rel) => {
             if let Some(existing) = relations.get(&rel.id) {
                 if existing != &rel {
@@ -216,7 +217,7 @@ pub fn pgoutput_to_wal_event(
                 return Ok(None);
             }
 
-            crate::logging::vprintln(format_args!(
+            vprintln(format_args!(
                 "[WAL] relation {}.{} id={} columns={}",
                 rel.namespace,
                 rel.name,
@@ -243,7 +244,6 @@ pub fn pgoutput_to_wal_event(
                 new_tuple: tuple,
             };
 
-            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
             Ok(Some(event))
         }
         PgOutputMessage::Update {
@@ -266,7 +266,6 @@ pub fn pgoutput_to_wal_event(
                 new_tuple,
             };
 
-            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
             Ok(Some(event))
         }
         PgOutputMessage::Delete {
@@ -285,10 +284,15 @@ pub fn pgoutput_to_wal_event(
                 old_tuple,
             };
 
-            crate::logging::vprintln(format_args!("[WAL] parsed: {event:?}"));
             Ok(Some(event))
         }
+    };
+
+    if let Ok(Some(ref event)) = result {
+        vprintln(format_args!("[WAL] parsed: {event:?}"));
     }
+
+    result
 }
 
 #[cfg(test)]
