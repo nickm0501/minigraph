@@ -1,3 +1,4 @@
+pub mod byte_reader;
 pub mod hint_generator;
 pub mod pgoutput;
 pub mod reader;

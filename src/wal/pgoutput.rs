@@ -1,3 +1,4 @@
+use crate::wal::byte_reader::ByteReader;
 use crate::wal::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +53,7 @@ impl std::fmt::Display for PgOutputError {
 impl std::error::Error for PgOutputError {}
 
 pub fn parse_pgoutput_messages(data: &[u8]) -> Result<Vec<PgOutputMessage>, PgOutputError> {
-    let mut reader = Reader::new(data);
+    let mut reader = ByteReader::new(data);
     let mut messages = Vec::new();
 
     while !reader.is_empty() {
@@ -69,7 +70,7 @@ pub fn parse_pgoutput_messages(data: &[u8]) -> Result<Vec<PgOutputMessage>, PgOu
     Ok(messages)
 }
 
-fn parse_relation(reader: &mut Reader<'_>) -> Result<Relation, PgOutputError> {
+fn parse_relation(reader: &mut ByteReader<'_>) -> Result<Relation, PgOutputError> {
     let id = reader.read_u32("relation id")?;
     let namespace = reader.read_cstring("relation namespace")?;
     let name = reader.read_cstring("relation name")?;
@@ -100,7 +101,7 @@ fn parse_relation(reader: &mut Reader<'_>) -> Result<Relation, PgOutputError> {
     })
 }
 
-fn parse_insert(reader: &mut Reader<'_>) -> Result<PgOutputMessage, PgOutputError> {
+fn parse_insert(reader: &mut ByteReader<'_>) -> Result<PgOutputMessage, PgOutputError> {
     let relation_id = reader.read_u32("insert relation id")?;
 
     let kind = reader.read_u8("insert tuple kind")?;
@@ -116,7 +117,7 @@ fn parse_insert(reader: &mut Reader<'_>) -> Result<PgOutputMessage, PgOutputErro
     })
 }
 
-fn parse_update(reader: &mut Reader<'_>) -> Result<PgOutputMessage, PgOutputError> {
+fn parse_update(reader: &mut ByteReader<'_>) -> Result<PgOutputMessage, PgOutputError> {
     let relation_id = reader.read_u32("update relation id")?;
 
     let mut old_values = None;
@@ -139,7 +140,7 @@ fn parse_update(reader: &mut Reader<'_>) -> Result<PgOutputMessage, PgOutputErro
     })
 }
 
-fn parse_delete(reader: &mut Reader<'_>) -> Result<PgOutputMessage, PgOutputError> {
+fn parse_delete(reader: &mut ByteReader<'_>) -> Result<PgOutputMessage, PgOutputError> {
     let relation_id = reader.read_u32("delete relation id")?;
 
     let kind = reader.read_u8("delete tuple kind")?;
@@ -156,7 +157,7 @@ fn parse_delete(reader: &mut Reader<'_>) -> Result<PgOutputMessage, PgOutputErro
     })
 }
 
-fn parse_tuple(reader: &mut Reader<'_>) -> Result<Vec<Value>, PgOutputError> {
+fn parse_tuple(reader: &mut ByteReader<'_>) -> Result<Vec<Value>, PgOutputError> {
     let num_columns = reader.read_u16("tuple column count")?;
     let mut values = Vec::with_capacity(num_columns as usize);
 
@@ -187,70 +188,6 @@ fn parse_tuple(reader: &mut Reader<'_>) -> Result<Vec<Value>, PgOutputError> {
     }
 
     Ok(values)
-}
-
-struct Reader<'a> {
-    data: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn new(data: &'a [u8]) -> Self {
-        Self { data, pos: 0 }
-    }
-
-    #[cfg(test)]
-    fn pos(&self) -> usize {
-        self.pos
-    }
-
-    fn is_empty(&self) -> bool {
-        self.pos >= self.data.len()
-    }
-
-    fn read_u8(&mut self, ctx: &'static str) -> Result<u8, PgOutputError> {
-        let bytes = self.read_bytes(1, ctx)?;
-        Ok(bytes[0])
-    }
-
-    fn read_u16(&mut self, ctx: &'static str) -> Result<u16, PgOutputError> {
-        let bytes = self.read_bytes(2, ctx)?;
-        Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
-    }
-
-    fn read_u32(&mut self, ctx: &'static str) -> Result<u32, PgOutputError> {
-        let bytes = self.read_bytes(4, ctx)?;
-        Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn read_i32(&mut self, ctx: &'static str) -> Result<i32, PgOutputError> {
-        let bytes = self.read_bytes(4, ctx)?;
-        Ok(i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn read_cstring(&mut self, ctx: &'static str) -> Result<String, PgOutputError> {
-        let start = self.pos;
-        let Some(end) = self.data[start..].iter().position(|b| *b == 0) else {
-            return Err(PgOutputError::Truncated(ctx));
-        };
-
-        let end = start + end;
-        let bytes = &self.data[start..end];
-        self.pos = end + 1; // consume NUL terminator
-
-        let s = std::str::from_utf8(bytes).map_err(|_| PgOutputError::InvalidUtf8(ctx))?;
-        Ok(s.to_string())
-    }
-
-    fn read_bytes(&mut self, len: usize, ctx: &'static str) -> Result<&'a [u8], PgOutputError> {
-        if self.pos + len > self.data.len() {
-            return Err(PgOutputError::Truncated(ctx));
-        }
-
-        let bytes = &self.data[self.pos..self.pos + len];
-        self.pos += len;
-        Ok(bytes)
-    }
 }
 
 #[cfg(test)]
@@ -564,7 +501,7 @@ mod tests {
     fn invalid_utf8_errors() {
         let bytes = fixture_bytes();
 
-        let mut reader = Reader::new(bytes);
+        let mut reader = ByteReader::new(bytes);
         let tag = reader.read_u8("message tag").unwrap();
         assert_eq!(tag, b'R', "fixture must start with a relation message");
         let _rel_id = reader.read_u32("relation id").unwrap();
