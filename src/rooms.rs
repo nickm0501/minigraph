@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::metrics::Metrics;
 use crate::types::{ClientId, DocumentId, RoomCommandError, ServerMessage};
 
-const ROOMS_ACTOR_CHANNEL_CAPACITY: usize = 256;
+const ROOMS_COORDINATOR_CHANNEL_CAPACITY: usize = 256;
 
 #[derive(Clone)]
 pub struct RoomsHandle {
@@ -15,8 +15,8 @@ pub struct RoomsHandle {
 
 impl RoomsHandle {
     pub(crate) fn start(metrics: Arc<Metrics>) -> Self {
-        let (tx, rx) = mpsc::channel(ROOMS_ACTOR_CHANNEL_CAPACITY);
-        tokio::spawn(rooms_actor(rx, metrics));
+        let (tx, rx) = mpsc::channel(ROOMS_COORDINATOR_CHANNEL_CAPACITY);
+        tokio::spawn(rooms_coordinator(rx, metrics));
         Self { tx }
     }
 
@@ -84,7 +84,7 @@ enum RoomCommand {
     },
 }
 
-async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>) {
+async fn rooms_coordinator(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>) {
     let mut rooms: HashMap<DocumentId, Vec<(ClientId, mpsc::Sender<ServerMessage>)>> =
         HashMap::new();
 
@@ -100,7 +100,7 @@ async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>)
                 clients.push((client_id.clone(), tx));
 
                 crate::logging::vprintln(format_args!(
-                    "[ACTOR] Client {} joined room '{}' (now {} clients)",
+                    "[ROOMS] Client {} joined room '{}' (now {} clients)",
                     client_id,
                     room,
                     clients.len()
@@ -113,7 +113,7 @@ async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>)
                     clients.retain(|(id, _)| id != &client_id);
 
                     crate::logging::vprintln(format_args!(
-                        "[ACTOR] Client {} left room '{}' ({} remaining)",
+                        "[ROOMS] Client {} left room '{}' ({} remaining)",
                         client_id,
                         room,
                         clients.len()
@@ -122,7 +122,7 @@ async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>)
                     if clients.is_empty() {
                         rooms.remove(&room);
                         crate::logging::vprintln(format_args!(
-                            "[ACTOR] Room '{}' is now empty",
+                            "[ROOMS] Room '{}' is now empty",
                             room
                         ));
                     }
@@ -133,7 +133,7 @@ async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>)
                     let mut failed_clients = Vec::new();
 
                     crate::logging::vprintln(format_args!(
-                        "[ACTOR] Broadcasting to room '{}' ({} clients)",
+                        "[ROOMS] Broadcasting to room '{}' ({} clients)",
                         room,
                         clients.len()
                     ));
@@ -146,7 +146,7 @@ async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>)
                                 metrics.inc_fanout_drop();
                             }
                             Err(mpsc::error::TrySendError::Closed(_)) => {
-                                println!("[ACTOR][ERR] Client channel closed: {}", client_id);
+                                println!("[ROOMS][ERR] Client channel closed: {}", client_id);
                                 failed_clients.push(client_id.clone());
                             }
                         }
@@ -158,7 +158,7 @@ async fn rooms_actor(mut rx: mpsc::Receiver<RoomCommand>, metrics: Arc<Metrics>)
                         if clients.is_empty() {
                             rooms.remove(&room);
                             crate::logging::vprintln(format_args!(
-                                "[ACTOR] Room '{}' emptied after cleanup",
+                                "[ROOMS] Room '{}' emptied after cleanup",
                                 room
                             ));
                         }
