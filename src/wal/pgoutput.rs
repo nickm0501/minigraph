@@ -376,7 +376,7 @@ mod tests {
                         match rel.name.as_str() {
                             "documents" => {
                                 let doc_id = expect_text(
-                                    new_values.get(0).expect("documents insert missing id"),
+                                    new_values.first().expect("documents insert missing id"),
                                     "documents.id",
                                 );
                                 document_ids_inserted.push(doc_id);

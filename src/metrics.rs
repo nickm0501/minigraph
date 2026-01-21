@@ -7,6 +7,14 @@ pub struct Metrics {
     actor_cmd_drops_total: AtomicU64,
     fanout_drops_total: AtomicU64,
 
+    // WAL metrics.
+    wal_events_consumed_total: AtomicU64,
+    wal_events_dropped_total: AtomicU64,
+    wal_lag_seconds: AtomicU64,
+    wal_lsn: AtomicU64,
+    wal_slot_active: AtomicU64,
+    wal_retained_bytes: AtomicU64,
+
     // Last sampled values.
     server_cpu_usage_x100: AtomicU64,
     // sysinfo reports memory in KiB; expose bytes.
@@ -31,6 +39,34 @@ impl Metrics {
 
     pub fn inc_fanout_drop(&self) {
         self.fanout_drops_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn inc_wal_events_consumed(&self) {
+        self.wal_events_consumed_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn inc_wal_events_dropped(&self) {
+        self.wal_events_dropped_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn set_wal_lag_seconds(&self, lag_seconds: u64) {
+        self.wal_lag_seconds.store(lag_seconds, Ordering::Relaxed);
+    }
+
+    pub fn set_wal_lsn(&self, lsn: u64) {
+        self.wal_lsn.store(lsn, Ordering::Relaxed);
+    }
+
+    pub fn set_wal_slot_active(&self, active: bool) {
+        self.wal_slot_active
+            .store(u64::from(active), Ordering::Relaxed);
+    }
+
+    pub fn set_wal_retained_bytes(&self, retained_bytes: u64) {
+        self.wal_retained_bytes
+            .store(retained_bytes, Ordering::Relaxed);
     }
 
     pub fn record_resource_sample(&self, cpu_usage_x100: u64, memory_bytes: u64) {
@@ -62,6 +98,13 @@ impl Metrics {
             actor_cmd_drops_total: self.actor_cmd_drops_total.load(Ordering::Relaxed),
             fanout_drops_total: self.fanout_drops_total.load(Ordering::Relaxed),
 
+            wal_events_consumed_total: self.wal_events_consumed_total.load(Ordering::Relaxed),
+            wal_events_dropped_total: self.wal_events_dropped_total.load(Ordering::Relaxed),
+            wal_lag_seconds: self.wal_lag_seconds.load(Ordering::Relaxed),
+            wal_lsn: self.wal_lsn.load(Ordering::Relaxed),
+            wal_slot_active: self.wal_slot_active.load(Ordering::Relaxed),
+            wal_retained_bytes: self.wal_retained_bytes.load(Ordering::Relaxed),
+
             server_samples_total: samples,
 
             server_cpu_usage_x100: self.server_cpu_usage_x100.load(Ordering::Relaxed),
@@ -90,6 +133,13 @@ fn saturating_fetch_add(target: &AtomicU64, value: u64) {
 pub struct MetricsSnapshot {
     pub actor_cmd_drops_total: u64,
     pub fanout_drops_total: u64,
+
+    pub wal_events_consumed_total: u64,
+    pub wal_events_dropped_total: u64,
+    pub wal_lag_seconds: u64,
+    pub wal_lsn: u64,
+    pub wal_slot_active: u64,
+    pub wal_retained_bytes: u64,
 
     pub server_samples_total: u64,
 
